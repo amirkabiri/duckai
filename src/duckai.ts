@@ -8,8 +8,6 @@ import type {
   DuckAIRequest,
 } from "./types";
 
-const userAgent = new UserAgent();
-
 // Rate limiting tracking with sliding window
 interface RateLimitInfo {
   requestTimestamps: number[]; // Array of request timestamps for sliding window
@@ -182,7 +180,7 @@ export class DuckAI {
     }
   }
 
-  private async getVQD(): Promise<VQDResponse> {
+  private async getVQD(userAgent: string): Promise<VQDResponse> {
     const response = await fetch("https://duckduckgo.com/duckchat/v1/status", {
       headers: {
         accept: "*/*",
@@ -194,7 +192,7 @@ export class DuckAI {
         "sec-fetch-mode": "cors",
         "sec-fetch-site": "same-origin",
         "x-vqd-accept": "1",
-        "User-Agent": userAgent.toString(),
+        "User-Agent": userAgent,
       },
       referrer: "https://duckduckgo.com/",
       referrerPolicy: "origin",
@@ -246,7 +244,8 @@ export class DuckAI {
     // Wait if rate limiting is needed
     await this.waitIfNeeded();
 
-    const vqd = await this.getVQD();
+    const userAgent = new UserAgent().toString();
+    const vqd = await this.getVQD(userAgent);
 
     const { window } = new JSDOM(
       `<html><body><script>window.hash = ${vqd.hash}</script></body></html>`,
@@ -282,7 +281,7 @@ export class DuckAI {
         "sec-fetch-site": "same-origin",
         "x-fe-version": "serp_20250401_100419_ET-19d438eb199b2bf7c300",
         "x-vqd-4": vqd.vqd,
-        "User-Agent": userAgent.toString(),
+        "User-Agent": userAgent,
         "x-vqd-hash-1": btoa(
           JSON.stringify({
             server_hashes: hash.server_hashes,
@@ -357,7 +356,9 @@ export class DuckAI {
     // Wait if rate limiting is needed
     await this.waitIfNeeded();
 
-    const vqd = await this.getVQD();
+    const userAgent = new UserAgent().toString();
+
+    const vqd = await this.getVQD(userAgent);
 
     const { window } = new JSDOM(
       `<html><body><script>window.hash = ${vqd.hash}</script></body></html>`,
@@ -393,7 +394,7 @@ export class DuckAI {
         "sec-fetch-site": "same-origin",
         "x-fe-version": "serp_20250401_100419_ET-19d438eb199b2bf7c300",
         "x-vqd-4": vqd.vqd,
-        "User-Agent": userAgent.toString(),
+        "User-Agent": userAgent,
         "x-vqd-hash-1": btoa(
           JSON.stringify({
             server_hashes: hash.server_hashes,
