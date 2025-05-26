@@ -1,0 +1,60 @@
+# Node modules (will be installed in container)
+node_modules/
+
+# Test files
+tests/
+*.test.ts
+*.test.js
+
+# Development files
+.git/
+.gitignore
+*.md
+README.md
+TODO.md
+
+# Development scripts
+simple-duckai.js
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Build outputs
+dist/
+build/ 
