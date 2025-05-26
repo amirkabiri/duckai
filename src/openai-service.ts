@@ -625,4 +625,11 @@ export class OpenAIService {
       this.availableFunctions
     );
   }
+
+  /**
+   * Get current rate limit status from DuckAI
+   */
+  getRateLimitStatus() {
+    return this.duckAI.getRateLimitStatus();
+  }
 }
