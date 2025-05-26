@@ -145,15 +145,17 @@ export class OpenAIService {
     // Create a modified request with tool instructions
     const modifiedMessages = [...request.messages];
 
-    // Add tool system prompt
+    // Add tool instructions as user message (DuckAI doesn't support system messages)
     if (request.tools && request.tools.length > 0) {
       const toolPrompt = this.toolService.generateToolSystemPrompt(
         request.tools,
         request.tool_choice
       );
       modifiedMessages.unshift({
-        role: "system",
-        content: toolPrompt,
+        role: "user",
+        content: `[SYSTEM INSTRUCTIONS] ${toolPrompt}
+
+Please follow these instructions when responding to the following user message.`,
       });
     }
 
