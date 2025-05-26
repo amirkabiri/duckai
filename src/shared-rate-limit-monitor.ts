@@ -21,6 +21,15 @@ export class SharedRateLimitMonitor {
   }
 
   /**
+   * Clean old timestamps outside the sliding window
+   */
+  private cleanOldTimestamps(timestamps: number[]): number[] {
+    const now = Date.now();
+    const cutoff = now - this.WINDOW_SIZE_MS;
+    return timestamps.filter((timestamp) => timestamp > cutoff);
+  }
+
+  /**
    * Get current rate limit status from shared store
    */
   getCurrentStatus() {
@@ -43,15 +52,30 @@ export class SharedRateLimitMonitor {
     }
 
     const now = Date.now();
-    const windowElapsed = now - stored.windowStart;
+    let requestsInWindow: number;
+    let timeUntilReset: number;
 
-    // Calculate if window should be reset
-    let requestsInWindow = stored.requestCount;
-    let timeUntilReset = this.WINDOW_SIZE_MS - windowElapsed;
+    // Handle both old and new formats
+    if (stored.requestTimestamps) {
+      // New sliding window format
+      const cleanTimestamps = this.cleanOldTimestamps(stored.requestTimestamps);
+      requestsInWindow = cleanTimestamps.length;
 
-    if (windowElapsed >= this.WINDOW_SIZE_MS) {
-      requestsInWindow = 0;
-      timeUntilReset = this.WINDOW_SIZE_MS;
+      // For sliding window, calculate when the oldest request will expire
+      const oldestTimestamp = cleanTimestamps[0];
+      timeUntilReset = oldestTimestamp
+        ? Math.max(0, oldestTimestamp + this.WINDOW_SIZE_MS - now)
+        : 0;
+    } else {
+      // Old fixed window format (backward compatibility)
+      const windowElapsed = now - (stored.windowStart || 0);
+      requestsInWindow = stored.requestCount || 0;
+      timeUntilReset = this.WINDOW_SIZE_MS - windowElapsed;
+
+      if (windowElapsed >= this.WINDOW_SIZE_MS) {
+        requestsInWindow = 0;
+        timeUntilReset = this.WINDOW_SIZE_MS;
+      }
     }
 
     // Calculate recommended wait time
@@ -78,24 +102,45 @@ export class SharedRateLimitMonitor {
       dataSource: "shared" as const,
       lastUpdated: new Date(stored.lastUpdated).toISOString(),
       processId: stored.processId,
+      windowType: stored.requestTimestamps ? "sliding" : "fixed",
     };
   }
 
   /**
    * Print current rate limit status to console
    */
-  printStatus() {
+  printStatus(clearConsole: boolean = false) {
+    if (clearConsole) {
+      // Clear console for cleaner monitoring display
+      console.clear();
+    }
+
     const status = this.getCurrentStatus();
 
-    console.log("\n🔍 DuckAI Rate Limit Status (Shared):");
+    const windowTypeIcon =
+      (status as any).windowType === "sliding" ? "🔄" : "⏰";
+    const windowTypeText =
+      (status as any).windowType === "sliding"
+        ? "Sliding Window"
+        : "Fixed Window";
+
+    console.log(`\n🔍 DuckAI Rate Limit Status (${windowTypeText}):`);
     console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     console.log(
       `📊 Requests in current window: ${status.requestsInCurrentWindow}/${status.maxRequestsPerMinute}`
     );
     console.log(`📈 Utilization: ${status.utilizationPercentage.toFixed(1)}%`);
-    console.log(
-      `⏰ Window resets in: ${status.timeUntilWindowResetMinutes} minutes`
-    );
+
+    if ((status as any).windowType === "sliding") {
+      console.log(
+        `${windowTypeIcon} Next request expires in: ${status.timeUntilWindowResetMinutes} minutes`
+      );
+    } else {
+      console.log(
+        `${windowTypeIcon} Window resets in: ${status.timeUntilWindowResetMinutes} minutes`
+      );
+    }
+
     console.log(
       `🚦 Currently limited: ${status.isCurrentlyLimited ? "❌ Yes" : "✅ No"}`
     );
@@ -127,6 +172,19 @@ export class SharedRateLimitMonitor {
   }
 
   /**
+   * Print compact rate limit status for server console
+   */
+  printCompactStatus() {
+    const status = this.getCurrentStatus();
+    const windowType = (status as any).windowType === "sliding" ? "🔄" : "⏰";
+    const limitIcon = status.isCurrentlyLimited ? "❌" : "✅";
+
+    console.log(
+      `${windowType} Rate Limit: ${status.requestsInCurrentWindow}/${status.maxRequestsPerMinute} (${status.utilizationPercentage.toFixed(1)}%) ${limitIcon}`
+    );
+  }
+
+  /**
    * Start continuous monitoring (prints status every interval)
    */
   startMonitoring(intervalSeconds: number = 30) {
@@ -137,7 +195,7 @@ export class SharedRateLimitMonitor {
     this.printStatus();
 
     this.monitoringInterval = setInterval(() => {
-      this.printStatus();
+      this.printStatus(true); // Clear console for each update
     }, intervalSeconds * 1000);
   }
 

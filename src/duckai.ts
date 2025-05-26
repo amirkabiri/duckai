@@ -1,6 +1,7 @@
 import UserAgent from "user-agents";
 import { JSDOM } from "jsdom";
 import { RateLimitStore } from "./rate-limit-store";
+import { SharedRateLimitMonitor } from "./shared-rate-limit-monitor";
 import type {
   ChatCompletionMessage,
   VQDResponse,
@@ -9,10 +10,9 @@ import type {
 
 const userAgent = new UserAgent();
 
-// Rate limiting tracking
+// Rate limiting tracking with sliding window
 interface RateLimitInfo {
-  requestCount: number;
-  windowStart: number;
+  requestTimestamps: number[]; // Array of request timestamps for sliding window
   lastRequestTime: number;
   isLimited: boolean;
   retryAfter?: number;
@@ -20,12 +20,12 @@ interface RateLimitInfo {
 
 export class DuckAI {
   private rateLimitInfo: RateLimitInfo = {
-    requestCount: 0,
-    windowStart: Date.now(),
+    requestTimestamps: [],
     lastRequestTime: 0,
     isLimited: false,
   };
   private rateLimitStore: RateLimitStore;
+  private rateLimitMonitor: SharedRateLimitMonitor;
 
   // Conservative rate limiting - adjust based on observed limits
   private readonly MAX_REQUESTS_PER_MINUTE = 20;
@@ -34,7 +34,28 @@ export class DuckAI {
 
   constructor() {
     this.rateLimitStore = new RateLimitStore();
+    this.rateLimitMonitor = new SharedRateLimitMonitor();
     this.loadRateLimitFromStore();
+  }
+
+  /**
+   * Clean old timestamps outside the sliding window
+   */
+  private cleanOldTimestamps(): void {
+    const now = Date.now();
+    const cutoff = now - this.WINDOW_SIZE_MS;
+    this.rateLimitInfo.requestTimestamps =
+      this.rateLimitInfo.requestTimestamps.filter(
+        (timestamp) => timestamp > cutoff
+      );
+  }
+
+  /**
+   * Get current request count in sliding window
+   */
+  private getCurrentRequestCount(): number {
+    this.cleanOldTimestamps();
+    return this.rateLimitInfo.requestTimestamps.length;
   }
 
   /**
@@ -43,13 +64,27 @@ export class DuckAI {
   private loadRateLimitFromStore(): void {
     const stored = this.rateLimitStore.read();
     if (stored) {
-      this.rateLimitInfo = {
-        requestCount: stored.requestCount,
-        windowStart: stored.windowStart,
-        lastRequestTime: stored.lastRequestTime,
-        isLimited: stored.isLimited,
-        retryAfter: stored.retryAfter,
-      };
+      // Convert old format to new sliding window format if needed
+      const storedAny = stored as any;
+      if ("requestCount" in storedAny && "windowStart" in storedAny) {
+        // Old format - convert to new format (start fresh)
+        this.rateLimitInfo = {
+          requestTimestamps: [],
+          lastRequestTime: storedAny.lastRequestTime || 0,
+          isLimited: storedAny.isLimited || false,
+          retryAfter: storedAny.retryAfter,
+        };
+      } else {
+        // New format
+        this.rateLimitInfo = {
+          requestTimestamps: storedAny.requestTimestamps || [],
+          lastRequestTime: storedAny.lastRequestTime || 0,
+          isLimited: storedAny.isLimited || false,
+          retryAfter: storedAny.retryAfter,
+        };
+      }
+      // Clean old timestamps after loading
+      this.cleanOldTimestamps();
     }
   }
 
@@ -57,13 +92,13 @@ export class DuckAI {
    * Save rate limit data to shared store
    */
   private saveRateLimitToStore(): void {
+    this.cleanOldTimestamps();
     this.rateLimitStore.write({
-      requestCount: this.rateLimitInfo.requestCount,
-      windowStart: this.rateLimitInfo.windowStart,
+      requestTimestamps: this.rateLimitInfo.requestTimestamps,
       lastRequestTime: this.rateLimitInfo.lastRequestTime,
       isLimited: this.rateLimitInfo.isLimited,
       retryAfter: this.rateLimitInfo.retryAfter,
-    });
+    } as any);
   }
 
   /**
@@ -80,16 +115,15 @@ export class DuckAI {
     this.loadRateLimitFromStore();
 
     const now = Date.now();
-    const windowElapsed = now - this.rateLimitInfo.windowStart;
+    const currentRequestCount = this.getCurrentRequestCount();
 
-    // Reset window if it's been more than a minute
-    if (windowElapsed >= this.WINDOW_SIZE_MS) {
-      this.rateLimitInfo.requestCount = 0;
-      this.rateLimitInfo.windowStart = now;
-      this.saveRateLimitToStore();
-    }
+    // For sliding window, there's no fixed reset time
+    // The "reset" happens continuously as old requests fall out of the window
+    const oldestTimestamp = this.rateLimitInfo.requestTimestamps[0];
+    const timeUntilReset = oldestTimestamp
+      ? Math.max(0, oldestTimestamp + this.WINDOW_SIZE_MS - now)
+      : 0;
 
-    const timeUntilReset = Math.max(0, this.WINDOW_SIZE_MS - windowElapsed);
     const timeSinceLastRequest = now - this.rateLimitInfo.lastRequestTime;
     const recommendedWait = Math.max(
       0,
@@ -97,7 +131,7 @@ export class DuckAI {
     );
 
     return {
-      requestsInCurrentWindow: this.rateLimitInfo.requestCount,
+      requestsInCurrentWindow: currentRequestCount,
       maxRequestsPerMinute: this.MAX_REQUESTS_PER_MINUTE,
       timeUntilWindowReset: timeUntilReset,
       isCurrentlyLimited: this.rateLimitInfo.isLimited,
@@ -113,20 +147,17 @@ export class DuckAI {
     this.loadRateLimitFromStore();
 
     const now = Date.now();
-    const windowElapsed = now - this.rateLimitInfo.windowStart;
-
-    // Reset window if needed
-    if (windowElapsed >= this.WINDOW_SIZE_MS) {
-      this.rateLimitInfo.requestCount = 0;
-      this.rateLimitInfo.windowStart = now;
-      this.rateLimitInfo.isLimited = false;
-      this.saveRateLimitToStore();
-    }
+    const currentRequestCount = this.getCurrentRequestCount();
 
     // Check if we're hitting the rate limit
-    if (this.rateLimitInfo.requestCount >= this.MAX_REQUESTS_PER_MINUTE) {
-      const timeUntilReset = this.WINDOW_SIZE_MS - windowElapsed;
-      return { shouldWait: true, waitTime: timeUntilReset };
+    if (currentRequestCount >= this.MAX_REQUESTS_PER_MINUTE) {
+      // Find the oldest request timestamp
+      const oldestTimestamp = this.rateLimitInfo.requestTimestamps[0];
+      if (oldestTimestamp) {
+        // Wait until the oldest request falls out of the window
+        const waitTime = oldestTimestamp + this.WINDOW_SIZE_MS - now + 100; // +100ms buffer
+        return { shouldWait: true, waitTime: Math.max(0, waitTime) };
+      }
     }
 
     // Check minimum interval between requests
@@ -137,45 +168,6 @@ export class DuckAI {
     }
 
     return { shouldWait: false, waitTime: 0 };
-  }
-
-  /**
-   * Update rate limit tracking after a request
-   */
-  private updateRateLimitTracking(response: Response) {
-    const now = Date.now();
-    this.rateLimitInfo.requestCount++;
-    this.rateLimitInfo.lastRequestTime = now;
-
-    // Check for rate limit headers (DuckDuckGo might not send these, but we'll check)
-    const rateLimitRemaining = response.headers.get("x-ratelimit-remaining");
-    const rateLimitReset = response.headers.get("x-ratelimit-reset");
-    const retryAfter = response.headers.get("retry-after");
-
-    if (response.status === 429) {
-      this.rateLimitInfo.isLimited = true;
-      if (retryAfter) {
-        this.rateLimitInfo.retryAfter = parseInt(retryAfter) * 1000; // Convert to ms
-      }
-      console.warn("Rate limited by DuckAI API:", {
-        status: response.status,
-        retryAfter: retryAfter,
-        rateLimitRemaining,
-        rateLimitReset,
-      });
-    }
-
-    // Log rate limit info if headers are present
-    if (rateLimitRemaining || rateLimitReset) {
-      console.log("DuckAI Rate Limit Info:", {
-        remaining: rateLimitRemaining,
-        reset: rateLimitReset,
-        currentCount: this.rateLimitInfo.requestCount,
-      });
-    }
-
-    // Save updated rate limit info to store
-    this.saveRateLimitToStore();
   }
 
   /**
@@ -270,9 +262,12 @@ export class DuckAI {
 
     // Update rate limit tracking BEFORE making the request
     const now = Date.now();
-    this.rateLimitInfo.requestCount++;
+    this.rateLimitInfo.requestTimestamps.push(now);
     this.rateLimitInfo.lastRequestTime = now;
     this.saveRateLimitToStore();
+
+    // Show compact rate limit status in server console
+    this.rateLimitMonitor.printCompactStatus();
 
     const response = await fetch("https://duckduckgo.com/duckchat/v1/chat", {
       headers: {
@@ -378,9 +373,12 @@ export class DuckAI {
 
     // Update rate limit tracking BEFORE making the request
     const now = Date.now();
-    this.rateLimitInfo.requestCount++;
+    this.rateLimitInfo.requestTimestamps.push(now);
     this.rateLimitInfo.lastRequestTime = now;
     this.saveRateLimitToStore();
+
+    // Show compact rate limit status in server console
+    this.rateLimitMonitor.printCompactStatus();
 
     const response = await fetch("https://duckduckgo.com/duckchat/v1/chat", {
       headers: {

@@ -3,8 +3,10 @@ import { join } from "path";
 import { tmpdir } from "os";
 
 interface RateLimitData {
-  requestCount: number;
-  windowStart: number;
+  // Support both old and new formats for backward compatibility
+  requestCount?: number; // Old format
+  windowStart?: number; // Old format
+  requestTimestamps?: number[]; // New sliding window format
   lastRequestTime: number;
   isLimited: boolean;
   retryAfter?: number;
