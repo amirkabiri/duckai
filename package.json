@@ -10,7 +10,9 @@
     "test:watch": "bun test --watch",
     "test:openai": "bun test tests/openai-simple.test.ts",
     "test:openai-full": "bun test tests/openai-library.test.ts",
-    "test:all": "bun test tests/server.test.ts tests/openai-simple.test.ts"
+    "test:tools": "bun test tests/tool-service.test.ts tests/openai-tools.test.ts",
+    "test:e2e": "bun test tests/e2e-tools.test.ts",
+    "test:all": "bun test tests/server.test.ts tests/openai-simple.test.ts tests/tool-service.test.ts tests/openai-tools.test.ts"
   },
   "dependencies": {
     "jsdom": "^25.0.1",

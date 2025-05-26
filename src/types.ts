@@ -1,8 +1,41 @@
 // OpenAI API Types
 export interface ChatCompletionMessage {
-  role: "system" | "user" | "assistant";
-  content: string;
+  role: "system" | "user" | "assistant" | "tool";
+  content: string | null;
+  name?: string;
+  tool_calls?: ToolCall[];
+  tool_call_id?: string;
 }
+
+export interface FunctionDefinition {
+  name: string;
+  description?: string;
+  parameters?: {
+    type: "object";
+    properties: Record<string, any>;
+    required?: string[];
+  };
+}
+
+export interface ToolDefinition {
+  type: "function";
+  function: FunctionDefinition;
+}
+
+export interface ToolCall {
+  id: string;
+  type: "function";
+  function: {
+    name: string;
+    arguments: string;
+  };
+}
+
+export type ToolChoice =
+  | "none"
+  | "auto"
+  | "required"
+  | { type: "function"; function: { name: string } };
 
 export interface ChatCompletionRequest {
   model: string;
@@ -14,12 +47,14 @@ export interface ChatCompletionRequest {
   frequency_penalty?: number;
   presence_penalty?: number;
   stop?: string | string[];
+  tools?: ToolDefinition[];
+  tool_choice?: ToolChoice;
 }
 
 export interface ChatCompletionChoice {
   index: number;
   message: ChatCompletionMessage;
-  finish_reason: "stop" | "length" | "content_filter" | null;
+  finish_reason: "stop" | "length" | "content_filter" | "tool_calls" | null;
 }
 
 export interface ChatCompletionResponse {
@@ -40,8 +75,9 @@ export interface ChatCompletionStreamChoice {
   delta: {
     role?: "assistant";
     content?: string;
+    tool_calls?: ToolCall[];
   };
-  finish_reason: "stop" | "length" | "content_filter" | null;
+  finish_reason: "stop" | "length" | "content_filter" | "tool_calls" | null;
 }
 
 export interface ChatCompletionStreamResponse {

@@ -6,7 +6,8 @@ A high-performance HTTP server built with Bun that provides OpenAI-compatible AP
 
 - **OpenAI API Compatible**: Drop-in replacement for OpenAI API
 - **Multiple Models**: Support for GPT-4o-mini, Claude-3-Haiku, Llama, Mistral, and more
-- **Streaming Support**: Real-time streaming responses
+- **Function Calling/Tools**: Full support for OpenAI-compatible function calling
+- **Streaming Support**: Real-time streaming responses (including with tools)
 - **Built with Bun**: Ultra-fast TypeScript runtime
 - **CORS Enabled**: Ready for web applications
 - **Comprehensive Testing**: Full test suite ensuring compatibility
@@ -136,6 +137,39 @@ for await (const chunk of stream) {
 }
 ```
 
+### Function Calling (Tools)
+
+```javascript
+import OpenAI from 'openai';
+
+const openai = new OpenAI({
+  baseURL: 'http://localhost:3000/v1',
+  apiKey: 'dummy-key',
+});
+
+const completion = await openai.chat.completions.create({
+  model: 'gpt-4o-mini',
+  messages: [
+    { role: 'user', content: 'What time is it?' }
+  ],
+  tools: [
+    {
+      type: 'function',
+      function: {
+        name: 'get_current_time',
+        description: 'Get the current time'
+      }
+    }
+  ]
+});
+
+// Handle function calls
+if (completion.choices[0].finish_reason === 'tool_calls') {
+  const toolCalls = completion.choices[0].message.tool_calls;
+  console.log('Function calls:', toolCalls);
+}
+```
+
 ## 🌐 API Endpoints
 
 ### `GET /health`
@@ -176,7 +210,27 @@ Create chat completions (OpenAI compatible).
   ],
   "stream": false,
   "temperature": 0.7,
-  "max_tokens": 150
+  "max_tokens": 150,
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "get_weather",
+        "description": "Get weather for a location",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "location": {
+              "type": "string",
+              "description": "City name"
+            }
+          },
+          "required": ["location"]
+        }
+      }
+    }
+  ],
+  "tool_choice": "auto"
 }
 ```
 
@@ -210,6 +264,138 @@ Create chat completions (OpenAI compatible).
 data: {"id":"chatcmpl-abc123","object":"chat.completion.chunk",...}
 
 data: [DONE]
+```
+
+**Response (Function Call):**
+```json
+{
+  "id": "chatcmpl-abc123",
+  "object": "chat.completion",
+  "created": 1640995200,
+  "model": "gpt-4o-mini",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "call_1",
+            "type": "function",
+            "function": {
+              "name": "get_weather",
+              "arguments": "{\"location\": \"San Francisco\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 25,
+    "completion_tokens": 15,
+    "total_tokens": 40
+  }
+}
+```
+
+## 🛠️ Function Calling (Tools)
+
+This server implements OpenAI-compatible function calling using a "prompt engineering trick" since Duck.ai doesn't natively support tools. The system works by:
+
+1. **Converting tools to system prompts**: Tool definitions are converted into detailed instructions for the AI
+2. **Parsing AI responses**: The AI is instructed to respond with JSON when it needs to call functions
+3. **Executing functions**: Built-in and custom functions can be executed
+4. **Returning results**: Function results are formatted as OpenAI-compatible responses
+
+### Built-in Functions
+
+The server comes with several built-in functions:
+
+- `get_current_time`: Returns the current timestamp
+- `calculate`: Performs mathematical calculations
+- `get_weather`: Returns mock weather data (for demonstration)
+
+### Custom Functions
+
+You can register custom functions programmatically:
+
+```javascript
+// In your server setup
+import { OpenAIService } from './src/openai-service';
+
+const service = new OpenAIService();
+service.registerFunction('my_function', (args) => {
+  return `Hello ${args.name}!`;
+});
+```
+
+### Tool Choice Options
+
+- `"auto"` (default): AI decides whether to call functions
+- `"none"`: AI will not call any functions
+- `"required"`: AI must call at least one function
+- `{"type": "function", "function": {"name": "specific_function"}}`: AI must call the specified function
+
+### Example: Multi-turn Conversation with Tools
+
+```bash
+curl -X POST http://localhost:3000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4o-mini",
+    "messages": [
+      {"role": "user", "content": "What time is it?"},
+      {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "call_1",
+            "type": "function",
+            "function": {
+              "name": "get_current_time",
+              "arguments": "{}"
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "content": "2024-01-15T10:30:00Z",
+        "tool_call_id": "call_1"
+      },
+      {"role": "user", "content": "Thanks! Now calculate 15 + 27"}
+    ],
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "get_current_time",
+          "description": "Get the current time"
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "calculate",
+          "description": "Perform mathematical calculations",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "expression": {
+                "type": "string",
+                "description": "Mathematical expression to evaluate"
+              }
+            },
+            "required": ["expression"]
+          }
+        }
+      }
+    ]
+  }'
 ```
 
 ## 🧪 Testing
