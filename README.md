@@ -2,6 +2,63 @@
 
 A high-performance OpenAI-compatible HTTP server that uses DuckDuckGo's AI backend, providing free access to multiple AI models through the familiar OpenAI API interface.
 
+## Setup & Quick Start
+
+### Option 1: Using Docker (Recommended)
+
+The easiest way to get started is using the pre-built Docker image:
+
+```bash
+# Pull the Docker image
+docker pull amirkabiri/duckai
+
+# Run the container
+docker run -p 3000:3000 amirkabiri/duckai
+```
+
+The server will be available at `http://localhost:3000`.
+
+Docker image URL: [https://hub.docker.com/r/amirkabiri/duckai/](https://hub.docker.com/r/amirkabiri/duckai/)
+
+### Option 2: Manual Setup
+
+1. Clone the repository:
+```bash
+git clone git@github.com:amirkabiri/duckai.git
+cd duckai
+```
+
+2. Install dependencies:
+```bash
+bun install
+```
+
+3. Start the server:
+```bash
+bun run dev
+```
+
+### Basic Usage Example
+
+```javascript
+import OpenAI from "openai";
+
+const openai = new OpenAI({
+  baseURL: "http://localhost:3000/v1",
+  apiKey: "dummy-key", // Any string works
+});
+
+// Chat completion
+const completion = await openai.chat.completions.create({
+  model: "gpt-4o-mini", // Default model
+  messages: [
+    { role: "user", content: "Hello! How are you?" }
+  ],
+});
+
+console.log(completion.choices[0].message.content);
+```
+
 ## Introduction
 
 DuckAI OpenAI Server bridges the gap between DuckDuckGo's free AI chat service and the widely-adopted OpenAI API format. This allows you to:
@@ -10,7 +67,7 @@ DuckAI OpenAI Server bridges the gap between DuckDuckGo's free AI chat service a
 - **Drop-in OpenAI replacement** - Compatible with existing OpenAI client libraries
 - **Tool calling support** - Full function calling capabilities
 - **Streaming responses** - Real-time response streaming
-- **Rate limiting** - Built-in intelligent rate limiting to respect DuckDuckGo's limits
+- ✅ Rate limiting - Built-in intelligent rate limiting to respect DuckDuckGo's limits
 
 ### Supported Models
 
