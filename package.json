@@ -21,8 +21,11 @@
   },
   "devDependencies": {
     "@types/jsdom": "^21.1.7",
+    "@types/node": "^24.3.0",
     "@types/user-agents": "^1.0.4",
-    "bun-types": "latest"
+    "bun-types": "latest",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.2"
   },
   "peerDependencies": {
     "typescript": "^5.0.0"
