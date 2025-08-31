@@ -12,7 +12,7 @@
     "resolveJsonModule": true,
     "noEmit": false,
     "outDir": "./dist",
-    "types": ["node"]
+    "types": ["node", "bun-types"]
   },
   "include": ["src/**/*", "tests/**/*"],
   "exclude": ["node_modules"]

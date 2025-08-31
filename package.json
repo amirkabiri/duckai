@@ -5,14 +5,23 @@
   "main": "src/server.ts",
   "scripts": {
     "dev": "bun run --watch src/server.ts",
+    "dev:npm": "ts-node --watch src/server.ts",
     "start": "bun run src/server.ts",
+    "start:npm": "ts-node src/server.ts",
     "test": "bun test",
+    "test:npm": "npm test",
     "test:watch": "bun test --watch",
+    "test:watch:npm": "npm run test -- --watch",
     "test:openai": "bun test tests/openai-simple.test.ts",
+    "test:openai:npm": "npx ts-node --esm tests/openai-simple.test.ts",
     "test:openai-full": "bun test tests/openai-library.test.ts",
+    "test:openai-full:npm": "npx ts-node --esm tests/openai-library.test.ts",
     "test:tools": "bun test tests/tool-service.test.ts tests/openai-tools.test.ts",
+    "test:tools:npm": "npx ts-node --esm tests/tool-service.test.ts tests/openai-tools.test.ts",
     "test:e2e": "bun test tests/e2e-tools.test.ts",
-    "test:all": "bun test tests/server.test.ts tests/openai-simple.test.ts tests/tool-service.test.ts tests/openai-tools.test.ts"
+    "test:e2e:npm": "npx ts-node --esm tests/e2e-tools.test.ts",
+    "test:all": "bun test tests/server.test.ts tests/openai-simple.test.ts tests/tool-service.test.ts tests/openai-tools.test.ts",
+    "test:all:npm": "npx ts-node --esm tests/server.test.ts tests/openai-simple.test.ts tests/tool-service.test.ts tests/openai-tools.test.ts"
   },
   "dependencies": {
     "jsdom": "^25.0.1",
