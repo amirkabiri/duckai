@@ -11,8 +11,8 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "noEmit": true,
-    "types": ["bun-types"]
+    "types": ["bun-types"],
   },
-  "include": ["src/**/*", "tests/**/*"],
-  "exclude": ["node_modules", "dist"]
-} 
+  "include": ["src/**/*", "tests/**/*", "env.d.ts"],
+  "exclude": ["node_modules", "dist"],
+}

@@ -1,3 +1,4 @@
+import { ChatCompletionContentPart } from "openai/src/resources.js";
 import { DuckAI } from "./duckai";
 import { ToolService } from "./tool-service";
 import type {
@@ -10,7 +11,12 @@ import type {
   DuckAIRequest,
   ToolDefinition,
   ToolCall,
+  DuckAIMetadata,
+  DuckChatCompletionContentPart,
+  DuckChatCompletionMessage,
+  DuckChatCompletionContentPartImage,
 } from "./types";
+import { DUCKAI_MODELS } from "./models";
 
 export class OpenAIService {
   private duckAI: DuckAI;
@@ -31,7 +37,7 @@ export class OpenAIService {
         try {
           // Simple calculator - in production, use a proper math parser
           const result = Function(
-            `"use strict"; return (${args.expression})`
+            `"use strict"; return (${args.expression})`,
           )();
           return { result };
         } catch (error) {
@@ -69,33 +75,22 @@ export class OpenAIService {
     return Math.ceil(text.length / 4);
   }
 
-  private transformToDuckAIRequest(
-    request: ChatCompletionRequest
-  ): DuckAIRequest {
-    // Use the model from request, fallback to default
-    const model = request.model || "mistralai/Mistral-Small-24B-Instruct-2501";
-
-    return {
-      model,
-      messages: request.messages,
-    };
-  }
-
   async createChatCompletion(
-    request: ChatCompletionRequest
+    request: ChatCompletionRequest,
   ): Promise<ChatCompletionResponse> {
     // Check if this request involves function calling
     if (
       this.toolService.shouldUseFunctionCalling(
         request.tools,
-        request.tool_choice
+        request.tool_choice,
       )
     ) {
       return this.createChatCompletionWithTools(request);
     }
 
-    const duckAIRequest = this.transformToDuckAIRequest(request);
-    const response = await this.duckAI.chat(duckAIRequest);
+    const duckAIRequest = DuckAI.transformToDuckAIRequest(request);
+    const { content: response, reasoning } =
+      await this.duckAI.chat(duckAIRequest);
 
     const id = this.generateId();
     const created = this.getCurrentTimestamp();
@@ -116,6 +111,7 @@ export class OpenAIService {
           message: {
             role: "assistant",
             content: response,
+            ...(reasoning ? { reasoning_content: reasoning } : {}),
           },
           finish_reason: "stop",
         },
@@ -129,7 +125,7 @@ export class OpenAIService {
   }
 
   private async createChatCompletionWithTools(
-    request: ChatCompletionRequest
+    request: ChatCompletionRequest,
   ): Promise<ChatCompletionResponse> {
     const id = this.generateId();
     const created = this.getCurrentTimestamp();
@@ -149,7 +145,7 @@ export class OpenAIService {
     if (request.tools && request.tools.length > 0) {
       const toolPrompt = this.toolService.generateToolSystemPrompt(
         request.tools,
-        request.tool_choice
+        request.tool_choice,
       );
       modifiedMessages.unshift({
         role: "user",
@@ -159,12 +155,13 @@ Please follow these instructions when responding to the following user message.`
       });
     }
 
-    const duckAIRequest = this.transformToDuckAIRequest({
+    const duckAIRequest = DuckAI.transformToDuckAIRequest({
       ...request,
       messages: modifiedMessages,
     });
 
-    const response = await this.duckAI.chat(duckAIRequest);
+    const { content: response, reasoning } =
+      await this.duckAI.chat(duckAIRequest);
 
     // Check if the response contains function calls
     if (this.toolService.detectFunctionCalls(response)) {
@@ -217,7 +214,7 @@ Please follow these instructions when responding to the following user message.`
       const userContent = userMessage.content || "";
 
       // Determine which function to call
-      let functionToCall: string;
+      let functionToCall: string = "";
 
       // If specific function is requested, use that
       if (
@@ -225,14 +222,14 @@ Please follow these instructions when responding to the following user message.`
         request.tool_choice.type === "function"
       ) {
         functionToCall = request.tool_choice.function.name;
-      } else {
+      } else if (typeof userContent == "string") {
         // Try to infer which function to call based on the user's request
         // Simple heuristics to choose appropriate function
         functionToCall = request.tools[0].function.name; // Default to first function
 
         if (userContent.toLowerCase().includes("time")) {
           const timeFunction = request.tools.find(
-            (t) => t.function.name === "get_current_time"
+            (t) => t.function.name === "get_current_time",
           );
           if (timeFunction) functionToCall = timeFunction.function.name;
         } else if (
@@ -240,12 +237,12 @@ Please follow these instructions when responding to the following user message.`
           /\d+\s*[+\-*/]\s*\d+/.test(userContent)
         ) {
           const calcFunction = request.tools.find(
-            (t) => t.function.name === "calculate"
+            (t) => t.function.name === "calculate",
           );
           if (calcFunction) functionToCall = calcFunction.function.name;
         } else if (userContent.toLowerCase().includes("weather")) {
           const weatherFunction = request.tools.find(
-            (t) => t.function.name === "get_weather"
+            (t) => t.function.name === "get_weather",
           );
           if (weatherFunction) functionToCall = weatherFunction.function.name;
         }
@@ -253,18 +250,20 @@ Please follow these instructions when responding to the following user message.`
 
       // Generate appropriate arguments based on function
       let args = "{}";
-      if (functionToCall === "calculate") {
-        const mathMatch = userContent.match(/(\d+\s*[+\-*/]\s*\d+)/);
-        if (mathMatch) {
-          args = JSON.stringify({ expression: mathMatch[1] });
-        }
-      } else if (functionToCall === "get_weather") {
-        // Try to extract location from user message
-        const locationMatch = userContent.match(
-          /(?:in|for|at)\s+([A-Za-z\s,]+)/i
-        );
-        if (locationMatch) {
-          args = JSON.stringify({ location: locationMatch[1].trim() });
+      if (typeof userContent == "string") {
+        if (functionToCall === "calculate") {
+          const mathMatch = userContent.match(/(\d+\s*[+\-*/]\s*\d+)/);
+          if (mathMatch) {
+            args = JSON.stringify({ expression: mathMatch[1] });
+          }
+        } else if (functionToCall === "get_weather") {
+          // Try to extract location from user message
+          const locationMatch = userContent.match(
+            /(?:in|for|at)\s+([A-Za-z\s,]+)/i,
+          );
+          if (locationMatch) {
+            args = JSON.stringify({ location: locationMatch[1].trim() });
+          }
         }
       }
 
@@ -280,7 +279,7 @@ Please follow these instructions when responding to the following user message.`
       const promptText = modifiedMessages.map((m) => m.content || "").join(" ");
       const promptTokens = this.estimateTokens(promptText);
       const completionTokens = this.estimateTokens(
-        JSON.stringify(forcedToolCall)
+        JSON.stringify(forcedToolCall),
       );
 
       return {
@@ -323,6 +322,7 @@ Please follow these instructions when responding to the following user message.`
           message: {
             role: "assistant",
             content: response,
+            ...(reasoning ? { reasoning_content: reasoning } : {}),
           },
           finish_reason: "stop",
         },
@@ -336,19 +336,19 @@ Please follow these instructions when responding to the following user message.`
   }
 
   async createChatCompletionStream(
-    request: ChatCompletionRequest
+    request: ChatCompletionRequest,
   ): Promise<ReadableStream<Uint8Array>> {
     // Check if this request involves function calling
     if (
       this.toolService.shouldUseFunctionCalling(
         request.tools,
-        request.tool_choice
+        request.tool_choice,
       )
     ) {
       return this.createChatCompletionStreamWithTools(request);
     }
 
-    const duckAIRequest = this.transformToDuckAIRequest(request);
+    const duckAIRequest = DuckAI.transformToDuckAIRequest(request);
     const duckStream = await this.duckAI.chatStream(duckAIRequest);
 
     const id = this.generateId();
@@ -386,6 +386,14 @@ Please follow these instructions when responding to the following user message.`
               return;
             }
 
+            const delta: ChatCompletionStreamResponse["choices"][0]["delta"] =
+              isFirst ? { role: "assistant" } : {};
+            if (value.type === "reasoning") {
+              delta.reasoning_content = value.text;
+            } else {
+              delta.content = value.text;
+            }
+
             const chunk: ChatCompletionStreamResponse = {
               id,
               object: "chat.completion.chunk",
@@ -394,9 +402,7 @@ Please follow these instructions when responding to the following user message.`
               choices: [
                 {
                   index: 0,
-                  delta: isFirst
-                    ? { role: "assistant", content: value }
-                    : { content: value },
+                  delta,
                   finish_reason: null,
                 },
               ],
@@ -416,7 +422,7 @@ Please follow these instructions when responding to the following user message.`
   }
 
   private async createChatCompletionStreamWithTools(
-    request: ChatCompletionRequest
+    request: ChatCompletionRequest,
   ): Promise<ReadableStream<Uint8Array>> {
     // For tools, we need to collect the full response first to parse function calls
     // This is a limitation of the "trick" approach - streaming with tools is complex
@@ -506,7 +512,7 @@ Please follow these instructions when responding to the following user message.`
               choices: [
                 {
                   index: 0,
-                  delta: { content: contentChunk },
+                  delta: { content: contentChunk as string },
                   finish_reason: null,
                 },
               ],
@@ -569,14 +575,21 @@ Please follow these instructions when responding to the following user message.`
       throw new Error("messages array cannot be empty");
     }
 
-    for (const message of request.messages) {
+    for (const message of request.messages as ChatCompletionMessage[]) {
       if (
         !message.role ||
-        !["system", "user", "assistant", "tool"].includes(message.role)
+        !["system", "developer", "user", "assistant", "tool"].includes(
+          message.role,
+        )
       ) {
         throw new Error(
-          "Each message must have a valid role (system, user, assistant, or tool)"
+          "Each message must have a valid role (system, user, assistant, or tool)",
         );
+      }
+
+      // Normalize developer role to system
+      if (message.role === "developer") {
+        message.role = "system";
       }
 
       // Tool messages have different validation rules
@@ -591,9 +604,13 @@ Please follow these instructions when responding to the following user message.`
         // For non-tool messages, content can be null if there are tool_calls
         if (
           message.content === undefined ||
-          (message.content !== null && typeof message.content !== "string")
+          (message.content !== null &&
+            typeof message.content !== "string" &&
+            !Array.isArray(message.content))
         ) {
-          throw new Error("Each message must have content as a string or null");
+          throw new Error(
+            "Each message must have content as a string, array (for images), or null",
+          );
         }
       }
     }
@@ -606,9 +623,28 @@ Please follow these instructions when responding to the following user message.`
       }
     }
 
+    // support for system prompt
+    var metadata: DuckAIMetadata = {
+      customization: {
+        additionalInstructions: "",
+        shouldSeekClarity: false,
+      },
+      toolChoice: {
+        NewsSearch: false,
+        VideosSearch: false,
+        LocalSearch: false,
+        WeatherForecast: false,
+      },
+    };
+    if (request.messages[0].role == "system") {
+      metadata.customization.additionalInstructions =
+        request.messages.shift().content;
+    }
+
     return {
       model: request.model || "mistralai/Mistral-Small-24B-Instruct-2501",
       messages: request.messages,
+      metadata: metadata,
       temperature: request.temperature,
       max_tokens: request.max_tokens,
       stream: request.stream || false,
@@ -618,13 +654,14 @@ Please follow these instructions when responding to the following user message.`
       stop: request.stop,
       tools: request.tools,
       tool_choice: request.tool_choice,
+      reasoning_effort: request.reasoning_effort,
     };
   }
 
   async executeToolCall(toolCall: ToolCall): Promise<string> {
     return this.toolService.executeFunctionCall(
       toolCall,
-      this.availableFunctions
+      this.availableFunctions,
     );
   }
 

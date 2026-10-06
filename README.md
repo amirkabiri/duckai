@@ -88,6 +88,10 @@ DuckAI OpenAI Server bridges the gap between DuckDuckGo's free AI chat service a
 - ✅ OpenAI-compatible error handling
 - ✅ CORS support
 - ✅ Health check endpoint
+- ✅ Image upload support\*
+- ✅ File upload support\*
+
+\*On models that support it
 
 ## Usage
 

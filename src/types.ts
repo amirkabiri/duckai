@@ -1,11 +1,53 @@
+import { ChatCompletionContentPart } from "openai/src/resources.js";
+import { ChatCompletionReasoningEffort } from "openai/src/resources/chat/completions.js";
+import { DuckAIReasoningEffort } from "./models";
+
 // OpenAI API Types
-export interface ChatCompletionMessage {
-  role: "system" | "user" | "assistant" | "tool";
-  content: string | null;
+type ChatCompletionMessageRole =
+  | "system"
+  | "developer"
+  | "user"
+  | "assistant"
+  | "tool";
+
+type BaseChatCompletionMessage<ContentPart> = {
+  role: ChatCompletionMessageRole;
+  content: string | ContentPart[] | null;
+  reasoning_content?: string;
   name?: string;
   tool_calls?: ToolCall[];
   tool_call_id?: string;
+};
+
+export type ChatCompletionMessage =
+  BaseChatCompletionMessage<ChatCompletionContentPart>;
+export type DuckChatCompletionMessage =
+  BaseChatCompletionMessage<DuckChatCompletionContentPart>;
+
+// what duckduckgo accepts based on openai ChatCompletionContentPart types
+export interface DuckChatCompletionContentPartText {
+  text: string;
+  type: "text";
 }
+
+export interface DuckChatCompletionContentPartImage {
+  image: string;
+  mimeType: string;
+  type: "image";
+}
+
+export interface DuckChatCompletionContentPartFile {
+  content: string;
+  encoding: string;
+  filename: string;
+  mimeType: string;
+  type: "file";
+}
+
+export type DuckChatCompletionContentPart =
+  | DuckChatCompletionContentPartText
+  | DuckChatCompletionContentPartImage
+  | DuckChatCompletionContentPartFile;
 
 export interface FunctionDefinition {
   name: string;
@@ -40,6 +82,7 @@ export type ToolChoice =
 export interface ChatCompletionRequest {
   model: string;
   messages: ChatCompletionMessage[];
+  metadata?: DuckAIMetadata;
   temperature?: number;
   max_tokens?: number;
   stream?: boolean;
@@ -49,6 +92,7 @@ export interface ChatCompletionRequest {
   stop?: string | string[];
   tools?: ToolDefinition[];
   tool_choice?: ToolChoice;
+  reasoning_effort: DuckAIReasoningEffort;
 }
 
 export interface ChatCompletionChoice {
@@ -75,6 +119,7 @@ export interface ChatCompletionStreamChoice {
   delta: {
     role?: "assistant";
     content?: string;
+    reasoning_content?: string;
     tool_calls?: ToolCall[];
   };
   finish_reason: "stop" | "length" | "content_filter" | "tool_calls" | null;
@@ -102,11 +147,36 @@ export interface ModelsResponse {
 
 // Duck.ai specific types
 export interface VQDResponse {
-  vqd: string;
+  // vqd: string; // looks unused to me
   hash: string;
+}
+
+export interface DuckAIMetadata {
+  customization: {
+    additionalInstructions: string;
+    shouldSeekClarity: boolean;
+  };
+  toolChoice: {
+    NewsSearch: boolean;
+    VideosSearch: boolean;
+    LocalSearch: boolean;
+    WeatherForecast: boolean;
+  };
 }
 
 export interface DuckAIRequest {
   model: string;
-  messages: ChatCompletionMessage[];
+  messages: DuckChatCompletionMessage[];
+  metadata?: DuckAIMetadata;
+  reasoningEffort?: DuckAIReasoningEffort;
+  canUseTools: boolean;
 }
+
+export interface DuckAIChatResult {
+  content: string;
+  reasoning?: string;
+}
+
+export type DuckAIStreamChunk =
+  | { type: "content"; text: string }
+  | { type: "reasoning"; text: string };
