@@ -4,6 +4,7 @@ const openAIService = new OpenAIService();
 
 const server = Bun.serve({
   port: process.env.PORT || 3000,
+  hostname: process.env.HOST || "0.0.0.0",
   async fetch(req) {
     const url = new URL(req.url);
 
@@ -73,7 +74,7 @@ const server = Bun.serve({
         {
           status: 404,
           headers: { "Content-Type": "application/json", ...corsHeaders },
-        }
+        },
       );
     } catch (error) {
       console.error("Server error:", error);
@@ -98,26 +99,26 @@ const server = Bun.serve({
         {
           status: statusCode,
           headers: { "Content-Type": "application/json", ...corsHeaders },
-        }
+        },
       );
     }
   },
 });
 
 console.log(
-  `🚀 OpenAI-compatible server running on http://localhost:${server.port}`
+  `🚀 OpenAI-compatible server running on http://localhost:${server.port}`,
 );
 console.log(`📚 Available endpoints:`);
 console.log(`  GET  /health - Health check`);
 console.log(`  GET  /v1/models - List available models`);
 console.log(
-  `  POST /v1/chat/completions - Chat completions (streaming & non-streaming)`
+  `  POST /v1/chat/completions - Chat completions (streaming & non-streaming)`,
 );
 console.log(`\n🔧 Example usage:`);
 console.log(
-  `curl -X POST http://localhost:${server.port}/v1/chat/completions \\`
+  `curl -X POST http://localhost:${server.port}/v1/chat/completions \\`,
 );
 console.log(`  -H "Content-Type: application/json" \\`);
 console.log(
-  `  -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"Hello!"}]}'`
+  `  -d '{"model":"gpt-6-luna","messages":[{"role":"user","content":"Hello!"}]}'`,
 );

@@ -16,8 +16,8 @@
   },
   "dependencies": {
     "jsdom": "^25.0.1",
-    "openai": "^4.103.0",
-    "user-agents": "^1.1.0"
+    "openai": "^4.104.0",
+    "user-agents": "^1.1.675"
   },
   "devDependencies": {
     "@types/jsdom": "^21.1.7",
@@ -25,6 +25,6 @@
     "bun-types": "latest"
   },
   "peerDependencies": {
-    "typescript": "^5.0.0"
+    "typescript": "^5.8.3"
   }
 }

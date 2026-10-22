@@ -1,5 +1,5 @@
 # Build stage - install dependencies and prepare source
-FROM oven/bun:1.2.14-alpine AS build
+FROM docker.io/oven/bun:1.2.14-alpine AS build
 
 WORKDIR /app
 
@@ -13,7 +13,7 @@ RUN bun install --frozen-lockfile
 COPY . ./
 
 # Production stage - minimal Bun runtime
-FROM oven/bun:1.2.14-alpine AS production
+FROM docker.io/oven/bun:1.2.14-alpine AS production
 
 # Install essential runtime dependencies
 RUN apk add --no-cache \
@@ -61,4 +61,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD curl -f http://localhost:3000/health || exit 1
 
 # Start the application with Bun runtime
-CMD ["bun", "run", "src/server.ts"] 
+CMD ["bun", "run", "src/server.ts"]
