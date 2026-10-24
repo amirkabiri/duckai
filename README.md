@@ -71,12 +71,13 @@ DuckAI OpenAI Server bridges the gap between DuckDuckGo's free AI chat service a
 
 ### Supported Models
 
-- `gpt-4o-mini` (Default)
+- `gpt-5.4-luna` (Default)
+- `gpt-5.4-mini`
 - `gpt-5-mini`
-- `claude-3-5-haiku-latest`
-- `meta-llama/Llama-4-Scout-17B-16E-Instruct`
-- `mistralai/Mistral-Small-24B-Instruct-2501`
-- `openai/gpt-oss-120b`
+- `claude-haiku-4.5`
+- `mistral-small-2603`
+- `tinfoil/gpt-oss-120b`
+- `gemma4-31b`
 
 ### Features
 
